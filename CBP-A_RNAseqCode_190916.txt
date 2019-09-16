@@ -1,0 +1,300 @@
+## RNA-seq analysis code for publication:
+
+# Journal: Comparative Biochemistry and Physiology Part A: Molecular and Integrative Physiology
+# Authors: Andrew J. Cline, Dr. Scott L. Hamilton, Dr. Cheryl A. Logan
+# Title: Effects of multiple climate change stressors on gene expression in blue rockfish (Sebastes mystinus)
+
+## Sequence quality control and transcriptome assembly.
+
+# SEQUENCE QUALITY CONTROL
+
+# Examine raw single-end and paired-end fastq files using FastQC (Andrews 2010):
+
+fastqc *fastq.gz
+
+# Run Trimmomatic on all raw single-end fastq files using TrimmomaticSE script (Bolger et al. 2014):
+
+#!/bin/bash
+
+for i in *.fastq.gz;
+do
+	echo working with "$i"
+	newfile="$(basename $i .fastq.gz)"
+    java -jar /opt/Trimmomatic-0.36/trimmomatic-0.36.jar SE -phred33 ${newfile}.fastq.gz ${newfile}.trimmo.fastq.gz ILLUMINACLIP:/opt/Trimmomatic-0.36/adapters/TruSeq3-SE.fa:2:30:10 SLIDINGWINDOW:4:5 LEADING:5 TRAILING:5 MINLEN:25
+done;
+
+# Examine trimmed single-end files using FastQC (Andrews 2010):
+
+fastqc *trimmo.fastq.gz
+
+# TRANSCRIPTOME ASSEMBLY
+
+# Concatenate all raw R1 and R2 paired-end files for assembly using Trinity (Haas et al. 2013).
+
+cat *R1_001.fastq.gz > left.fq.gz
+cat *R2_001.fastq.gz > right.fq.gz
+
+# Concatenate three trimmed single-end fastq files with R1 (left) paired-end files for input into Trinity:
+
+cat left.fq.gz Mys53_2wk_pH.trimmo.fastq.gz Mys57_2wk_DO.trimmo.fastq.gz Mys7076_2wk_cross.trimmo.fastq.gz > left.SE.PE.fq.gz
+
+# Transcriptome assembly:
+
+nohup perl $TRINITY_HOME/Trinity --seqType fq --max_memory 50G --normalize_reads --left /data/rockfish/Cline/left.SE.PE.fq.gz--right /data/rockfish/Cline/right.fq.gz --SS_lib_type RF --trimmomatic --CPU 20 > Trinity_output.txt 2>&1 &
+
+nohup perl $TRINITY_HOME/util/TrinityStats.pl Trinity.bluerockfish.PESE.2017.fasta  
+
+# BUSCO analysis of transcriptome:
+
+python $BUSCO_HOME/run_BUSCO.py -i Trinity.bluerockfish.PESE.2017.fasta -o BUSCOresults_Trinity.bluerockfish.PESE.2017.fasta -l /data/references/BUSCO/actinopterygii_odb9 -m tran
+
+# Annotation using DIAMOND (Buchfink et al. 2015):
+
+# Against Actinopterygii nr database:
+
+diamond blastx -p 2 -k 1 -e 0.00001 -d /data/references/diamond/nr.dmnd -q Trinity.bluerockfish.PESE.2017.fasta -o Blues.PESE.dmnd.nr.txt   
+
+# Against UniProt/Swiss-Prot database:
+
+diamond blastx -p 2 -k 1 -e 0.00001 -d /data/references/diamond/uniprot_sprot.dmnd -q Trinity.bluerockfish.PESE.2017.fasta -o Blues.PESE.dmnd.uniprot_sprot.txt  
+
+# Below is the code for the first, fully crossed differential expression analysis that examined effects of both time and treatment:
+
+# READ MAPPING AND DIFFERENTIAL EXPRESSION ANALYSES
+
+# Estimate transcript abundances in single-end files using RSEM (Li and Dewey 2011).
+
+perl $TRINITY_HOME/util/align_and_estimate_abundance.pl \
+--transcripts Trinity.bluerockfish.PESE.2017.fasta --seqType fq \
+--samples_file T2_samples.txt \
+--est_method RSEM --aln_method bowtie --trinity_mode --prep_reference \
+--output_dir RSEM.T2.Blues.PESE
+
+# Make counts matrix
+
+perl $TRINITY_HOME/util/abundance_estimates_to_matrix.pl --est_method RSEM --name_sample_by_basedir Mys13_12h_control/RSEM.genes.results Mys14_12h_control/RSEM.genes.results Mys15_12h_control/RSEM.genes.results Mys16_12h_control/RSEM.genes.results Mys17_12h_pH/RSEM.genes.results Mys18_12h_pH/RSEM.genes.results Mys19_12h_pH/RSEM.genes.results Mys20_12h_pH/RSEM.genes.results Mys21_12h_DO/RSEM.genes.results Mys22_12h_DO/RSEM.genes.results Mys23_12h_DO/RSEM.genes.results Mys24_12h_DO/RSEM.genes.results Mys25_24h_control/RSEM.genes.results Mys26_24h_control/RSEM.genes.results Mys27_24h_control/RSEM.genes.results Mys28_24h_control/RSEM.genes.results Mys30_24h_pH/RSEM.genes.results Mys31_24h_pH/RSEM.genes.results Mys32_24h_pH/RSEM.genes.results Mys34_24h_DO/RSEM.genes.results Mys35_24h_DO/RSEM.genes.results Mys36_24h_DO/RSEM.genes.results Mys49_2wk_control/RSEM.genes.results Mys50_2wk_control/RSEM.genes.results Mys51_2wk_control/RSEM.genes.results Mys52_2wk_control/RSEM.genes.results Mys53_2wk_pH/RSEM.genes.results Mys54_2wk_pH/RSEM.genes.results Mys57_2wk_DO/RSEM.genes.results Mys58_2wk_DO/RSEM.genes.results Mys59_2wk_DO/RSEM.genes.results Mys60_2wk_DO/RSEM.genes.results Mys7064_12h_cross/RSEM.genes.results Mys7065_12h_cross/RSEM.genes.results Mys7066_12h_cross/RSEM.genes.results Mys7067_12h_cross/RSEM.genes.results Mys7068_24h_cross/RSEM.genes.results Mys7069_24h_cross/RSEM.genes.results Mys7070_24h_cross/RSEM.genes.results Mys7071_24h_cross/RSEM.genes.results Mys7076_2wk_cross/RSEM.genes.results Mys7077_2wk_cross/RSEM.genes.results Mys7078_2wk_cross/RSEM.genes.results Mys7079_2wk_cross/RSEM.genes.results
+
+## Compare replicates
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+--samples T2_samples.txt --CPM --log2 \
+--min_rowSums 10 \
+--compare_replicates
+
+# Compare replicates across samples
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+--min_rowSums 10 \
+-s T2_samples.txt  \
+--log2 --CPM --sample_cor_matrix
+
+# Generate PCA plot
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+-s T2_samples.txt \
+--min_rowSums 10 --log2 \
+--CPM --center_rows \
+--prin_comp 5
+
+# Run DE!
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/run_DE_analysis.pl  \
+--matrix matrix.counts.matrix \
+--method edgeR \
+--samples_file T2_samples.txt
+
+# This last command makes a new edgeR subdirectory, which you have to go 
+# into in order to run the next command. Append the name of your
+# timepoint/treatment/other identifier to the end of this directory name
+# to keep track of things.
+
+mv edgeR.28197.dir edgeR.28197.dir_full
+cd edgeR.28197.dir_full
+
+# Pull out those DE genes with specific p-value cutoff and fold-change cutoff.
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/analyze_diff_expr.pl --matrix matrix.TMM.EXPR.matrix -P 0.05 -C 0 --samples T2_samples.txt
+
+######################################################
+
+# At this point, we re-ran the abundance estimates to matrix script, but only for the samples WITHIN EACH TIME POINT. So basically, a mini DE analysis for each of the three time points, in the hope of observing more interesting DE between treatments at each timepoint.
+
+# Make counts matrix for 12 h timepoint:
+
+perl $TRINITY_HOME/util/abundance_estimates_to_matrix.pl --est_method RSEM --name_sample_by_basedir Mys13_12h_control/RSEM.genes.results Mys14_12h_control/RSEM.genes.results Mys15_12h_control/RSEM.genes.results Mys16_12h_control/RSEM.genes.results Mys17_12h_pH/RSEM.genes.results Mys18_12h_pH/RSEM.genes.results Mys19_12h_pH/RSEM.genes.results Mys20_12h_pH/RSEM.genes.results Mys21_12h_DO/RSEM.genes.results Mys22_12h_DO/RSEM.genes.results Mys23_12h_DO/RSEM.genes.results Mys24_12h_DO/RSEM.genes.results Mys7064_12h_cross/RSEM.genes.results Mys7065_12h_cross/RSEM.genes.results Mys7066_12h_cross/RSEM.genes.results Mys7067_12h_cross/RSEM.genes.results
+
+# Compare replicates:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+--samples T2_12h_samples.txt --CPM --log2 \
+--min_rowSums 10 \
+--compare_replicates
+
+# Compare replicates across samples:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+--min_rowSums 10 \
+-s T2_12h_samples.txt  \
+--log2 --CPM --sample_cor_matrix
+
+# Generate PCA plot:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+-s T2_12h_samples.txt \
+--min_rowSums 10 --log2 \
+--CPM --center_rows \
+--prin_comp 4 
+
+# Run DE:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/run_DE_analysis.pl  \
+--matrix matrix.counts.matrix \
+--method edgeR \
+--samples_file T2_12h_samples.txt
+
+## This last command makes a new edgeR subdirectory, which you have to go 
+## into in order to run the next command. Append the name of your
+## timepoint/treatment/other identifier to the end of this directory name
+## to keep track of things.
+
+mv edgeR.1555.dir edgeR.1555.dir_12h 
+cd edgeR.1555.dir_12h 
+
+# Pull out those DE genes with specific p-value cutoff and fold-change cutoff.
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/analyze_diff_expr.pl --matrix matrix.TMM.EXPR.matrix -P 0.05 -C 0 --samples T2_12h_samples.txt
+
+# Make a new directory for that p-value and cutoff, and move all the new files into that directory.
+
+mkdir P0.05C0
+mv *P0.05_C0* P0.05C0/
+
+# Repeat lines 127-176 for the 24 h timepoint:
+
+perl $TRINITY_HOME/util/abundance_estimates_to_matrix.pl --est_method RSEM --name_sample_by_basedir Mys25_24h_control/RSEM.genes.results Mys26_24h_control/RSEM.genes.results Mys27_24h_control/RSEM.genes.results Mys28_24h_control/RSEM.genes.results Mys30_24h_pH/RSEM.genes.results Mys31_24h_pH/RSEM.genes.results Mys32_24h_pH/RSEM.genes.results Mys34_24h_DO/RSEM.genes.results Mys35_24h_DO/RSEM.genes.results Mys36_24h_DO/RSEM.genes.results Mys7068_24h_cross/RSEM.genes.results Mys7069_24h_cross/RSEM.genes.results Mys7070_24h_cross/RSEM.genes.results Mys7071_24h_cross/RSEM.genes.results
+
+# Compare replicates:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+--samples T2_24h_samples.txt --CPM --log2 \
+--min_rowSums 10 \
+--compare_replicates
+
+# Compare replicates across samples:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+--min_rowSums 10 \
+-s T2_24h_samples.txt  \
+--log2 --CPM --sample_cor_matrix
+
+# Generate PCA plot:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+-s T2_24h_samples.txt \
+--min_rowSums 10 --log2 \
+--CPM --center_rows \
+--prin_comp 3 
+
+# Run DE:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/run_DE_analysis.pl  \
+--matrix matrix.counts.matrix \
+--method edgeR \
+--samples_file T2_24h_samples.txt
+
+## This last command makes a new edgeR subdirectory, which you have to go 
+## into in order to run the next command. Append the name of your
+## timepoint/treatment/other identifier to the end of this directory name
+## to keep track of things.
+
+mv edgeR.2482.dir edgeR.2482.dir_24h 
+cd edgeR.2482.dir_24h
+
+# Pull out those DE genes with specific p-value cutoff and fold-change cutoff.
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/analyze_diff_expr.pl --matrix /projects/rockfish/transcriptomics/EXP6_Smyst_timecourse/SE/qual/renamed/edgeR.2482.dir_24h/matrix.TMM.EXPR.matrix -P 0.01 -C 0 --samples /projects/rockfish/transcriptomics/EXP6_Smyst_timecourse/SE/qual/renamed/T2_24h_samples.txt
+
+# Make a new directory for that p-value and cutoff, and move all the new files into that directory.
+ 
+mkdir P0.05C0
+mv *P0.05_C0* P0.05C0/
+
+# Repeat lines 127-176 for the 2 week timepoint:
+
+perl $TRINITY_HOME/util/abundance_estimates_to_matrix.pl --est_method RSEM --name_sample_by_basedir Mys49_2wk_control/RSEM.genes.results Mys50_2wk_control/RSEM.genes.results Mys51_2wk_control/RSEM.genes.results Mys52_2wk_control/RSEM.genes.results Mys53_2wk_pH/RSEM.genes.results Mys54_2wk_pH/RSEM.genes.results Mys57_2wk_DO/RSEM.genes.results Mys58_2wk_DO/RSEM.genes.results Mys59_2wk_DO/RSEM.genes.results Mys60_2wk_DO/RSEM.genes.results Mys7076_2wk_cross/RSEM.genes.results Mys7077_2wk_cross/RSEM.genes.results Mys7078_2wk_cross/RSEM.genes.results Mys7079_2wk_cross/RSEM.genes.results
+
+# Compare replicates:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+--samples T2_2wk_samples.txt --CPM --log2 \
+--min_rowSums 10 \
+--compare_replicates
+
+# Compare replicates across samples:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+--min_rowSums 10 \
+-s T2_2wk_samples.txt  \
+--log2 --CPM --sample_cor_matrix
+
+# Generate PCA plot:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/PtR \
+--matrix matrix.counts.matrix \
+-s T2_2wk_samples.txt \
+--min_rowSums 10 --log2 \
+--CPM --center_rows \
+--prin_comp 3 
+
+# Run DE:
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/run_DE_analysis.pl  \
+--matrix matrix.counts.matrix \
+--method edgeR \
+--samples_file T2_2wk_samples.txt
+
+## This last command makes a new edgeR subdirectory, which you have to go 
+## into in order to run the next command. Append the name of your
+## timepoint/treatment/other identifier to the end of this directory name
+## to keep track of things.
+
+mv edgeR.2978.dir  edgeR.2978.dir_2wk
+cd edgeR.2978.dir_2wk
+
+# Pull out those DE genes with specific p-value cutoff and fold-change cutoff.
+
+perl $TRINITY_HOME/Analysis/DifferentialExpression/analyze_diff_expr.pl --matrix /projects/rockfish/transcriptomics/EXP6_Smyst_timecourse/SE/qual/renamed/edgeR.2978.dir_2wk/matrix.TMM.EXPR.matrix -P 0.05 -C 0 --samples /projects/rockfish/transcriptomics/EXP6_Smyst_timecourse/SE/qual/renamed/T2_2wk_samples.txt
+
+# Make a new directory for that p-value and cutoff, and move all the new files into that directory.
+
+mkdir P0.05C0
+mv *P0.05_C0* P0.05C0/
+
+# Treatment comparisons at each timepoint are divided into "subsets". Example below:
+
+matrix.counts.matrix.12h_control_vs_12h_pH.edgeR.DE_results.P0.05_C0.DE.subset
+
+matrix.counts.matrix.12h_DO_vs_12h_control.edgeR.DE_results.P0.05_C0.DE.subset
+
+matrix.counts.matrix.12h_control_vs_12h_cross.edgeR.DE_results.P0.05_C0.DE.subset
+
+# For each subset file involving the control treatment, annotate the “best hit” isoform by e-value and alignment length against DIAMOND UniProt/Swiss-Prot annotation file:
+
+python annotate_dge_byEvalue.py -files matrix.counts.matrix.12h_control_vs_12h_pH.edgeR.DE_results.P0.05_C0.DE.subset Blues.PESE.dmnd.uniprot_sprot.txt
+
+# Then pull out just the UniProt IDs from this new file.
+
+python extract_uniprotIDs.py matrix.counts.matrix.12h_control_vs_12h_pH.edgeR.DE_results.P0.05_C0.DE.subset_annot_byEval.txt
+
+# NOTE: Various forms of 'awk' and 'grep' used to remove/isolate duplicates or identify UniProt IDs in common between files, respectively.
